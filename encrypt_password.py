@@ -1,16 +1,33 @@
 #!/usr/bin/env python3
-"""A module for encrypting passwords.
+"""
+    encryption password
 """
 import bcrypt
 
 
 def hash_password(password: str) -> bytes:
-    """Hashes a password using a random salt.
+    """expects one string argument name password and returns
+       a salted, hashed password, which is a byte string.
+
+    Args:
+        password (str): password
+
+    Returns:
+        bytes: encryption password
     """
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    if password:
+        return bcrypt.hashpw(str.encode(password), bcrypt.gensalt())
 
 
 def is_valid(hashed_password: bytes, password: str) -> bool:
-    """Checks is a hashed password was formed from the given password.
+    """Check password
+
+    Args:
+        hashed_password (bytes): hash
+        password (str): password
+
+    Returns:
+        bool: true or false
     """
-    return bcrypt.checkpw(password.encode('utf-8'), hashed_password)
+    if hashed_password and password:
+        return bcrypt.checkpw(str.encode(password), hashed_password)
