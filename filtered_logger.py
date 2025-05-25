@@ -1,79 +1,153 @@
 #!/usr/bin/env python3
 """
-    RedactingFormatter
+Module for filtering personal data from log messages.
 """
-import csv
+import re
 import logging
 import os
-import re
-from typing import List
 import mysql.connector
+from typing import List
+
 
 PII_FIELDS = ("name", "email", "phone", "ssn", "password")
 
 
+def filter_datum(fields: List[str], redaction: str, message: str, separator: str) -> str:
+    """Returns the obfuscated log message."""
+    return re.sub(rf"({'|'.join(fields)})=.*?{separator}",
+                  lambda m: f"{m.group(1)}={redaction}{separator}", message)
+
+
 class RedactingFormatter(logging.Formatter):
-    """ Redacting Formatter class
-    """
+    """Redacting Formatter class"""
 
     REDACTION = "***"
     FORMAT = "[HOLBERTON] %(name)s %(levelname)s %(asctime)-15s: %(message)s"
     SEPARATOR = ";"
 
     def __init__(self, fields: List[str]):
-        """ init """
         super(RedactingFormatter, self).__init__(self.FORMAT)
         self.fields = fields
 
     def format(self, record: logging.LogRecord) -> str:
-        """ format record """
-        return filter_datum(self.fields, self.REDACTION,
-                            super(RedactingFormatter, self).format(record),
-                            self.SEPARATOR)
-
-
-def filter_datum(fields: List[str], redaction: str, message: str,
-                 separator: str) -> str:
-    """ returns the log message obfuscated """
-    return re.sub(r"(\w+)=([a-zA-Z0-9@\.\-\(\)\ \:\^\<\>\~\$\%\@\?\!\/]*)",
-                  lambda match: match.group(1) + "=" + redaction
-                  if match.group(1) in fields else match.group(0), message)
+        """Filter values in log records using filter_datum."""
+        return filter_datum(self.fields, self.REDACTION, super().format(record), self.SEPARATOR)
 
 
 def get_logger() -> logging.Logger:
-    """ return a logger object """
-    lg = logging.getLogger("user_data")
-    lg.setLevel(logging.INFO)
-    lg.propagate = False
-    sh = logging.StreamHandler()
-    sh.setFormatter(RedactingFormatter(PII_FIELDS))
-    lg.addHandler(sh)
-    return lg
+    """Returns a configured logger for user data."""
+    logger = logging.getLogger("user_data")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(RedactingFormatter(fields=PII_FIELDS))
+    logger.addHandler(stream_handler)
+
+    return logger
 
 
 def get_db() -> mysql.connector.connection.MySQLConnection:
-    """ connect to MySQL database """
+    """Returns a connector to the secure database."""
     return mysql.connector.connect(
-        host=os.getenv("PERSONAL_DATA_DB_HOST", "root"),
-        database=os.getenv("PERSONAL_DATA_DB_NAME"),
-        user=os.getenv("PERSONAL_DATA_DB_USERNAME", "localhost"),
+        user=os.getenv("PERSONAL_DATA_DB_USERNAME", "root"),
         password=os.getenv("PERSONAL_DATA_DB_PASSWORD", ""),
+        host=os.getenv("PERSONAL_DATA_DB_HOST", "localhost"),
+        database=os.getenv("PERSONAL_DATA_DB_NAME")
     )
 
 
 def main():
-    """
-    main function
-    """
-    con = get_db()
-    users = con.cursor()
-    users.execute("SELECT CONCAT('name=', name, ';ssn=', ssn, ';ip=', ip, \
-        ';user_agent', user_agent, ';') AS message FROM users;")
-    formatter = RedactingFormatter(fields=PII_FIELDS)
+    """Main function to retrieve and log filtered user data."""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM users;")
     logger = get_logger()
+    columns = [desc[0] for desc in cursor.description]
 
-    for user in users:
-        logger.log(logging.INFO, user[0])
+    for row in cursor:
+        message = "; ".join(f"{col}={val}" for col, val in zip(columns, row)) + ";"
+        logger.info(message)
+
+    cursor.close()
+    db.close()
+
+
+if __name__ == "__main__":
+    main()
+#!/usr/bin/env python3
+"""
+Module for filtering personal data from log messages.
+"""
+import re
+import logging
+import os
+import mysql.connector
+from typing import List
+
+
+PII_FIELDS = ("name", "email", "phone", "ssn", "password")
+
+
+def filter_datum(fields: List[str], redaction: str, message: str, separator: str) -> str:
+    """Returns the obfuscated log message."""
+    return re.sub(rf"({'|'.join(fields)})=.*?{separator}",
+                  lambda m: f"{m.group(1)}={redaction}{separator}", message)
+
+
+class RedactingFormatter(logging.Formatter):
+    """Redacting Formatter class"""
+
+    REDACTION = "***"
+    FORMAT = "[HOLBERTON] %(name)s %(levelname)s %(asctime)-15s: %(message)s"
+    SEPARATOR = ";"
+
+    def __init__(self, fields: List[str]):
+        super(RedactingFormatter, self).__init__(self.FORMAT)
+        self.fields = fields
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Filter values in log records using filter_datum."""
+        return filter_datum(self.fields, self.REDACTION, super().format(record), self.SEPARATOR)
+
+
+def get_logger() -> logging.Logger:
+    """Returns a configured logger for user data."""
+    logger = logging.getLogger("user_data")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(RedactingFormatter(fields=PII_FIELDS))
+    logger.addHandler(stream_handler)
+
+    return logger
+
+
+def get_db() -> mysql.connector.connection.MySQLConnection:
+    """Returns a connector to the secure database."""
+    return mysql.connector.connect(
+        user=os.getenv("PERSONAL_DATA_DB_USERNAME", "root"),
+        password=os.getenv("PERSONAL_DATA_DB_PASSWORD", ""),
+        host=os.getenv("PERSONAL_DATA_DB_HOST", "localhost"),
+        database=os.getenv("PERSONAL_DATA_DB_NAME")
+    )
+
+
+def main():
+    """Main function to retrieve and log filtered user data."""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM users;")
+    logger = get_logger()
+    columns = [desc[0] for desc in cursor.description]
+
+    for row in cursor:
+        message = "; ".join(f"{col}={val}" for col, val in zip(columns, row)) + ";"
+        logger.info(message)
+
+    cursor.close()
+    db.close()
 
 
 if __name__ == "__main__":
